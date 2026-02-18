@@ -17,18 +17,18 @@ mod tests {
         assert!(!config.build.command.is_empty());
         
         // Test creating agentor directory
-        let test_dir = "/tmp/agentor_test";
-        if Path::new(test_dir).exists() {
-            fs::remove_dir_all(test_dir).ok();
+        let test_dir = std::env::temp_dir().join("agentor_test");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).ok();
         }
-        fs::create_dir(test_dir).unwrap();
+        fs::create_dir(&test_dir).unwrap();
         
-        rollback::init_agentor_dir(test_dir).unwrap();
+        rollback::init_agentor_dir(&test_dir).unwrap();
         
-        let agentor_path = Path::new(test_dir).join(".agentor");
+        let agentor_path = test_dir.join(".agentor");
         assert!(agentor_path.exists());
         
         // Cleanup
-        fs::remove_dir_all(test_dir).unwrap();
+        fs::remove_dir_all(&test_dir).unwrap();
     }
 }

@@ -5,13 +5,22 @@ use std::io::Write;
 use std::path::Path;
 
 /// Initialize the logging system
-pub fn init(_log_file: &str, log_level: &str) -> Result<()> {
+pub fn init(log_file: &str, log_level: &str) -> Result<()> {
     let level = parse_log_level(log_level);
     
+    // Initialize env_logger which writes to stderr
+    // Future: could add file logging using the log_file parameter
     env_logger::Builder::new()
         .filter_level(level)
         .format_timestamp_secs()
         .init();
+    
+    // Ensure log file directory exists
+    if let Some(parent) = std::path::Path::new(log_file).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).ok();
+        }
+    }
     
     Ok(())
 }

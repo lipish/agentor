@@ -35,22 +35,11 @@ pub fn install_hook<P: AsRef<Path>>(repo_path: P) -> Result<()> {
 
 /// Generate hook script content
 fn generate_hook_script() -> String {
-    // Use sh for Unix, but check for Windows
-    #[cfg(windows)]
-    {
-        r#"#!/bin/sh
+    // Use sh for cross-platform compatibility
+    r#"#!/bin/sh
 # Agentor post-commit hook
 agentor run
 "#.to_string()
-    }
-    
-    #[cfg(not(windows))]
-    {
-        r#"#!/bin/sh
-# Agentor post-commit hook
-agentor run
-"#.to_string()
-    }
 }
 
 /// Check if hook is already installed

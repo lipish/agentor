@@ -32,10 +32,10 @@ file = "agentor.log"
 level = "info"
 "#;
         
-        let test_file = "/tmp/test_config.toml";
-        fs::write(test_file, config_content).unwrap();
+        let test_file = std::env::temp_dir().join("test_config.toml");
+        fs::write(&test_file, config_content).unwrap();
         
-        let config = Config::load(test_file).unwrap();
+        let config = Config::load(&test_file).unwrap();
         
         assert_eq!(config.watch.repo_path, ".");
         assert_eq!(config.watch.branch, "main");
@@ -47,7 +47,7 @@ level = "info"
         assert_eq!(config.sync.remote, "origin");
         assert_eq!(config.rollback.keep_versions, 3);
         
-        fs::remove_file(test_file).unwrap();
+        fs::remove_file(&test_file).unwrap();
     }
     
     #[test]
@@ -64,16 +64,16 @@ level = "info"
     
     #[test]
     fn test_save_and_load_config() {
-        let test_file = "/tmp/test_save_config.toml";
+        let test_file = std::env::temp_dir().join("test_save_config.toml");
         
         let config = Config::default();
-        config.save(test_file).unwrap();
+        config.save(&test_file).unwrap();
         
-        let loaded = Config::load(test_file).unwrap();
+        let loaded = Config::load(&test_file).unwrap();
         
         assert_eq!(config.watch.repo_path, loaded.watch.repo_path);
         assert_eq!(config.build.command, loaded.build.command);
         
-        fs::remove_file(test_file).unwrap();
+        fs::remove_file(&test_file).unwrap();
     }
 }
