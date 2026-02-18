@@ -1,337 +1,104 @@
 # Agentor
 
-[English](#english) | [中文](#中文)
+**Agent-native Actor Runtime** — 一个专为 AI Agent 设计的 Actor 模型执行平台，用 Rust 实现。
 
----
+## 核心理念
 
-## English
+Actor 模型是 Agent 计算的天然底层。每个 Agent 就是一个 Actor，拥有私有状态（记忆）、通过异步消息通信、由监督者管理生命周期。Agentor 针对 AI Agent 的特点（高延迟 LLM 调用、不确定性崩溃、动态协作、状态持久化）做了专门设计。
 
-### What is Agentor?
+## 架构
 
-**Agentor** (Agent + Automator) is a local Git auto-deploy tool written in Rust, designed for solo developers. The core concept is to automatically complete the entire cycle of "build → deploy → sync to GitHub" after each code commit.
+```
+ActorSystem
+├── Supervisor (监督树，容错策略)
+│   ├── AgentActor (Planner)    ← 私有记忆 + Checkpoint
+│   ├── AgentActor (Executor)   ← 工具调用 + 流式输出
+│   └── AgentActor (Reviewer)   ← 人机协作 (AwaitHuman)
+├── Environment (凭证 & 配置注入)
+├── TokenBudget (资源预算 & 熔断)
+└── TraceCollector (全链路观测 & 回放)
+```
 
-### Features
+## 核心能力
 
-- **Post-commit Hook**: Automatically triggers deployment after every `git commit`
-- **Auto Build**: Execute customizable build commands (cargo, npm, make, etc.)
-- **Auto Deploy**: Support both process-based and file-based deployment
-- **GitHub Sync**: Automatically push code to remote repository after successful deployment
-- **Rollback Support**: Keep multiple versions and rollback when deployment fails
-- **Logging**: Track all operations with timestamps and results
+**事务性消息信箱** — 两阶段 commit/nack，处理失败自动重试，超限进入 Dead Letter Queue
 
-### Installation
+**故障分类监督** — Transient/Logic/Critical 三级故障分类，不同故障类型对应不同恢复策略
 
-#### From crates.io
+**流式拦截** — StreamInterceptor 实时检查流内容，检测到有害内容立即终止流
+
+**Agent 休眠/唤醒** — 空闲 Agent 可休眠释放资源，收到消息时自动唤醒并重放暂存消息
+
+**异步双向流通信** — Agent 间流式消息传递，支持 LLM streaming 中途中断
+
+**状态机与 Checkpointing** — Agent 状态原子化持久化，崩溃后精准恢复
+
+**人机协作原语** — AwaitHuman 挂起/唤醒机制，Agent 可暂停等待人类审批
+
+**资源预算与熔断** — Token/成本预算管理，超限自动熔断
+
+## 快速开始
+
+```rust
+use agentor::prelude::*;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // 创建环境
+    let env = Environment::new();
+    env.set_secret("OPENAI_API_KEY", "sk-...");
+
+    // 创建 ActorSystem
+    let mut system = ActorSystem::with_environment("my-app", env);
+
+    // 创建带 LLM 的 Agent
+    let llm = LlmConnector::openai("sk-...", "gpt-4")?;
+    let agent = AgentActor::new("planner")
+        .with_llm(llm)
+        .with_system_prompt("You are a helpful travel planner.");
+    let agent_ref = system.spawn_default(Box::new(agent));
+
+    // 发送消息（自动调用 LLM）
+    agent_ref.tell(AgentMessage::UserPrompt("Plan a trip to Tokyo".into())).await?;
+
+    // 关闭
+    system.shutdown().await;
+    Ok(())
+}
+```
+
+## 模块结构
+
+```
+src/
+├── actor/          # 核心 Actor 层 (Actor, ActorSystem, Mailbox, FailureKind, Hibernation)
+├── agent/          # Agent 专用层 (AgentActor, AgentState, Checkpoint, LlmConnector)
+├── supervisor/     # 监督树 (Supervisor, 故障分类策略)
+├── stream/         # 流式通信 (StreamProducer/Consumer, StreamInterceptor)
+├── environment/    # 环境 & 凭证 (Environment, Secret 注入)
+├── budget/         # 资源预算 (TokenBudget, 熔断)
+├── observe/        # 观测 & 回放 (TraceCollector → xtrace.sh)
+└── prelude.rs      # 常用类型 re-export
+```
+
+## 技术栈
+
+- **异步运行时**: tokio
+- **LLM 连接**: [llm-connector](https://github.com/lipish/llm-connector) — 12+ Provider（OpenAI, Anthropic, DeepSeek, Ollama...），统一流式接口
+- **可观测**: [xtrace](https://xtrace.sh) — 全链路追踪 + 指标上报，OpenTelemetry 兼容
+- **追踪**: tracing + xtrace XtraceLayer 自动采集
+- **序列化**: serde + bincode (状态持久化)
+- **并发**: dashmap + parking_lot
+- **无外部 Actor 框架依赖**，从 tokio task + mpsc channel 自建，保持对 Agent 场景的完全控制
+
+## 构建 & 测试
 
 ```bash
-cargo install agentor
+cargo build
+cargo test
+cargo run
 ```
 
-#### From Source
-
-```bash
-git clone https://github.com/lipish/agentor.git
-cd agentor
-cargo build --release
-cargo install --path .
-```
-
-### Quick Start
-
-1. **Initialize Agentor in your Git repository**
-
-```bash
-cd your-project
-agentor init
-```
-
-This will:
-- Install a post-commit hook in `.git/hooks/post-commit`
-- Create a default `deploy.toml` configuration file
-- Create `.agentor/` directory for version management
-
-2. **Configure `deploy.toml`**
-
-Edit the generated `deploy.toml` file to match your project:
-
-```toml
-[watch]
-repo_path = "."
-branch = "main"
-
-[build]
-command = "cargo build --release"
-
-[deploy]
-command = "systemctl restart app.service"
-target_dir = "/opt/deploy"
-artifacts = ["target/release/my-app"]
-
-[sync]
-enabled = true
-remote = "origin"
-branch = "main"
-
-[rollback]
-enabled = true
-keep_versions = 3
-
-[log]
-file = "agentor.log"
-level = "info"
-```
-
-3. **Make a commit and watch it deploy automatically**
-
-```bash
-git add .
-git commit -m "Your changes"
-# Agentor will automatically trigger: build → deploy → sync
-```
-
-### CLI Commands
-
-- `agentor init` - Initialize agentor in current Git repository
-- `agentor run` - Manually trigger deployment workflow
-- `agentor rollback` - Rollback to previous version
-- `agentor status` - Show deployment status and history
-- `agentor log` - Show recent deployment logs
-
-### Configuration
-
-See `deploy.toml.example` for a complete configuration reference.
-
-#### Build Configuration
-
-```toml
-[build]
-command = "cargo build --release"
-```
-
-Supports any build command: `npm run build`, `go build`, `make`, etc.
-
-#### Deploy Configuration
-
-Two deployment methods are supported:
-
-1. **Process Deployment**: Execute a command
-```toml
-[deploy]
-command = "systemctl restart app.service"
-```
-
-2. **File Deployment**: Copy artifacts to target directory
-```toml
-[deploy]
-target_dir = "/opt/deploy"
-artifacts = ["target/release/my-app", "config.json"]
-```
-
-#### Sync Configuration
-
-```toml
-[sync]
-enabled = true
-remote = "origin"
-branch = "main"
-```
-
-#### Rollback Configuration
-
-```toml
-[rollback]
-enabled = true
-keep_versions = 3
-```
-
-### Workflow
-
-```
-git commit
-    → post-commit hook triggers
-    → agentor run
-    → [1] Read deploy.toml configuration
-    → [2] Execute build command
-    → [3] Backup current version
-    → [4] Copy artifacts to target directory
-    → [5] Execute deployment command
-    → [6] git push to GitHub
-    → [7] Log results
-    → Complete ✅
-
-If any step [2]-[5] fails:
-    → Auto rollback to previous version
-    → Log error
-    → Stop workflow
-```
-
-### License
-
-MIT
-
----
-
-## 中文
-
-### Agentor 是什么？
-
-**Agentor**（Agent + Automator）是一个用 Rust 实现的本地 Git 自动部署工具，面向单人开发者。核心理念是：代码提交后自动完成"构建 → 部署 → 同步到 GitHub"的完整闭环。
-
-### 核心功能
-
-- **Post-commit Hook 触发**：每次 `git commit` 后自动触发部署
-- **自动构建**：支持任意构建命令（cargo、npm、make 等）
-- **自动部署**：支持进程部署和文件部署两种方式
-- **同步到 GitHub**：部署成功后自动 push 代码到远端仓库
-- **回滚支持**：保留多个版本，部署失败时自动回滚
-- **日志记录**：记录所有操作的时间戳和结果
-
-### 安装
-
-#### 从 crates.io 安装
-
-```bash
-cargo install agentor
-```
-
-#### 从源码安装
-
-```bash
-git clone https://github.com/lipish/agentor.git
-cd agentor
-cargo build --release
-cargo install --path .
-```
-
-### 快速开始
-
-1. **在你的 Git 仓库中初始化 Agentor**
-
-```bash
-cd your-project
-agentor init
-```
-
-这会：
-- 在 `.git/hooks/post-commit` 中安装 post-commit hook
-- 创建默认的 `deploy.toml` 配置文件
-- 创建 `.agentor/` 目录用于版本管理
-
-2. **配置 `deploy.toml`**
-
-编辑生成的 `deploy.toml` 文件以匹配你的项目：
-
-```toml
-[watch]
-repo_path = "."
-branch = "main"
-
-[build]
-command = "cargo build --release"
-
-[deploy]
-command = "systemctl restart app.service"
-target_dir = "/opt/deploy"
-artifacts = ["target/release/my-app"]
-
-[sync]
-enabled = true
-remote = "origin"
-branch = "main"
-
-[rollback]
-enabled = true
-keep_versions = 3
-
-[log]
-file = "agentor.log"
-level = "info"
-```
-
-3. **提交代码，自动部署**
-
-```bash
-git add .
-git commit -m "Your changes"
-# Agentor 会自动触发：构建 → 部署 → 同步
-```
-
-### CLI 命令
-
-- `agentor init` - 在当前 Git 仓库中初始化 agentor
-- `agentor run` - 手动触发部署流程
-- `agentor rollback` - 回滚到上一个版本
-- `agentor status` - 查看部署状态和历史
-- `agentor log` - 查看最近的部署日志
-
-### 配置说明
-
-详细配置请参考 `deploy.toml.example`。
-
-#### 构建配置
-
-```toml
-[build]
-command = "cargo build --release"
-```
-
-支持任意构建命令：`npm run build`、`go build`、`make` 等。
-
-#### 部署配置
-
-支持两种部署方式：
-
-1. **进程部署**：执行命令
-```toml
-[deploy]
-command = "systemctl restart app.service"
-```
-
-2. **文件部署**：复制构建产物到目标目录
-```toml
-[deploy]
-target_dir = "/opt/deploy"
-artifacts = ["target/release/my-app", "config.json"]
-```
-
-#### 同步配置
-
-```toml
-[sync]
-enabled = true
-remote = "origin"
-branch = "main"
-```
-
-#### 回滚配置
-
-```toml
-[rollback]
-enabled = true
-keep_versions = 3
-```
-
-### 工作流程
-
-```
-git commit
-    → post-commit hook 触发
-    → agentor run
-    → [1] 读取 deploy.toml 配置
-    → [2] 执行构建命令
-    → [3] 备份当前版本
-    → [4] 复制构建产物到目标目录
-    → [5] 执行部署命令
-    → [6] git push 同步到 GitHub
-    → [7] 记录日志
-    → 完成 ✅
-
-如果步骤 [2]-[5] 任一失败：
-    → 自动回滚到上一个成功版本
-    → 记录失败日志
-    → 终止流程
-```
-
-### 许可证
+## License
 
 MIT
