@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "Local Git auto-deploy tool with post-commit hook - 本地 Git 自动部署工具"
 license = "MIT"
+repository = "https://github.com/lipish/agentor"
+homepage = "https://github.com/lipish/agentor"
+documentation = "https://github.com/lipish/agentor#readme"
+keywords = ["git", "deploy", "automation", "devops", "hook"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
 
 [[bin]]
 name = "agentor"
