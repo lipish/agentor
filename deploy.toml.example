@@ -1,0 +1,44 @@
+# Agentor Configuration File Example
+# Copy this file to deploy.toml and customize for your project
+
+[watch]
+# Path to the Git repository (relative or absolute)
+repo_path = "."
+# Branch to watch for commits
+branch = "main"
+
+[build]
+# Build command to execute (e.g., cargo build --release, npm run build, make)
+command = "cargo build --release"
+
+[deploy]
+# Deployment command to execute (e.g., systemctl restart app.service, pm2 restart app)
+# Leave empty if only file deployment is needed
+command = "systemctl restart app.service"
+
+# Target directory for file deployment (where artifacts will be copied)
+target_dir = "/opt/deploy"
+
+# List of build artifacts to copy to target_dir
+# Paths are relative to the repository root
+artifacts = ["target/release/my-app"]
+
+[sync]
+# Enable/disable automatic git push after successful deployment
+enabled = true
+# Remote name to push to (usually "origin")
+remote = "origin"
+# Branch to push
+branch = "main"
+
+[rollback]
+# Enable/disable rollback functionality
+enabled = true
+# Number of previous versions to keep for rollback
+keep_versions = 3
+
+[log]
+# Log file path (relative to repository root)
+file = "agentor.log"
+# Log level: trace, debug, info, warn, error
+level = "info"
