@@ -21,6 +21,12 @@
 
 ### Installation
 
+#### From crates.io
+
+```bash
+cargo install agentor
+```
+
 #### From Source
 
 ```bash
@@ -181,6 +187,12 @@ MIT
 - **日志记录**：记录所有操作的时间戳和结果
 
 ### 安装
+
+#### 从 crates.io 安装
+
+```bash
+cargo install agentor
+```
 
 #### 从源码安装
 
