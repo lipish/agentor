@@ -123,15 +123,18 @@ Actor 的外部引用，持有 `MailboxSender` 的 clone。提供：
 
 ```
 UserPrompt 到达
-  → phase = Thinking
-  → 写入短期记忆
-  → 构造 LLM 请求（system_prompt + 历史记忆）
-  → 调用 LlmConnector.chat()
-  → 写入 assistant 回复到短期记忆
-  → 更新 token 统计
-  → phase = Idle
-  → 按间隔保存 Checkpoint
+  → handle_user_prompt()
+    → phase = Thinking
+    → 写入短期记忆
+    → 构造 LLM 请求（system_prompt + 历史记忆）
+    → 调用 LlmConnector.chat()
+    → 写入 assistant 回复到短期记忆
+    → 更新 token 统计
+    → phase = Idle
+    → maybe_checkpoint()
 ```
+
+代码实现经过重构，将不同类型消息的处理逻辑拆分为独立的私有方法（`handle_user_prompt`, `handle_tool_result` 等），提高可维护性。
 
 如果没有配置 LlmConnector，自动 fallback 到 echo 模式（方便测试）。
 
@@ -455,6 +458,7 @@ Agent 进入 AwaitingHuman
 - `AgentActor` 新增 `idle_timeout: Duration` 配置
 - `ActorSystem` 新增 `hibernate(id)` / `thaw(id)` 方法
 - Hibernate 时保存完整 Checkpoint + 将待处理消息持久化
+- 优化：Hibernate 过程使用轮询 + 超时机制等待 Actor 停止，避免竞态条件
 - Thaw 时从 Checkpoint 恢复 + 重放持久化的消息
 - 对外部调用者透明：`ActorRef.tell()` 在 Agent 休眠时自动触发 Thaw
 

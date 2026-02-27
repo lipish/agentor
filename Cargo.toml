@@ -1,6 +1,6 @@
 [package]
 name = "agentor"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Agent-native Actor runtime — an Actor-model execution platform designed for AI Agents"
 license = "MIT"
@@ -28,6 +28,9 @@ parking_lot = "0.12"
 xtrace-client = { version = "0.0.12", features = ["tracing"] }
 llm-connector = "0.6.0"
 futures-util = "0.3"
+mcp-client = "0.1.0"
+mcp-core = "0.1.50"
+url = "2.5.8"
 
 [dev-dependencies]
 tokio-test = "0.4"

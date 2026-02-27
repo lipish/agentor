@@ -244,9 +244,22 @@ impl ActorSystem {
                 // 发送 Stop 信号
                 self.stop_actor(id).await?;
 
-                // 等待状态变为 Stopped，然后标记为 Hibernated
-                // 简化实现：直接标记，实际状态会由 task 异步更新
-                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                // 等待状态变为 Stopped
+                let timeout = tokio::time::Duration::from_secs(5);
+                let start = tokio::time::Instant::now();
+                loop {
+                    match self.status(id) {
+                        Some(ActorStatus::Stopped) => break,
+                        Some(_) => {
+                            if start.elapsed() > timeout {
+                                return Err(anyhow::anyhow!("timeout waiting for actor {} to stop", id));
+                            }
+                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                        }
+                        None => return Err(anyhow::anyhow!("actor {} not found", id)),
+                    }
+                }
+
                 self.actors.entry(id.clone()).and_modify(|entry| {
                     if entry.status == ActorStatus::Stopped {
                         entry.status = ActorStatus::Hibernated;
